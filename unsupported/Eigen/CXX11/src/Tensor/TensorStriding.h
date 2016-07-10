@@ -164,7 +164,7 @@ struct TensorEvaluator<const TensorStridingOp<Strides, ArgType>, Device>
   template<int LoadMode>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE PacketReturnType packet(Index index) const
   {
-    EIGEN_STATIC_ASSERT(PacketSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
+    EIGEN_STATIC_ASSERT((PacketSize > 1), YOU_MADE_A_PROGRAMMING_MISTAKE)
     eigen_assert(index+PacketSize-1 < dimensions().TotalSize());
 
     Index inputIndices[] = {0, 0};
@@ -209,11 +209,17 @@ struct TensorEvaluator<const TensorStridingOp<Strides, ArgType>, Device>
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorOpCost costPerCoeff(bool vectorized) const {
-    const double compute_cost = NumDims * (2 * TensorOpCost::AddCost<Index>() +
-                                           2 * TensorOpCost::MulCost<Index>() +
-                                           TensorOpCost::DivCost<Index>());
-    return m_impl.costPerCoeff(vectorized) +
-           TensorOpCost(0, 0, compute_cost, false /* vectorized */, PacketSize);
+    double compute_cost = (NumDims - 1) * (TensorOpCost::AddCost<Index>() +
+                                           TensorOpCost::MulCost<Index>() +
+                                           TensorOpCost::DivCost<Index>()) +
+        TensorOpCost::MulCost<Index>();
+    if (vectorized) {
+      compute_cost *= 2;  // packet() computes two indices
+    }
+    const int innerDim = (static_cast<int>(Layout) == static_cast<int>(ColMajor)) ? 0 : (NumDims - 1);
+    return m_impl.costPerCoeff(vectorized && m_inputStrides[innerDim] == 1) +
+        // Computation is not vectorized per se, but it is done once per packet.
+        TensorOpCost(0, 0, compute_cost, vectorized, PacketSize);
   }
 
   EIGEN_DEVICE_FUNC Scalar* data() const { return NULL; }
@@ -283,7 +289,7 @@ struct TensorEvaluator<TensorStridingOp<Strides, ArgType>, Device>
   template <int StoreMode> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   void writePacket(Index index, const PacketReturnType& x)
   {
-    EIGEN_STATIC_ASSERT(PacketSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
+    EIGEN_STATIC_ASSERT((PacketSize > 1), YOU_MADE_A_PROGRAMMING_MISTAKE)
     eigen_assert(index+PacketSize-1 < this->dimensions().TotalSize());
 
     Index inputIndices[] = {0, 0};

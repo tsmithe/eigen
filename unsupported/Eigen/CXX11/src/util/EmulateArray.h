@@ -117,7 +117,7 @@ template <typename T, size_t n> class array {
     values[7] = v8;
   }
 
-#ifdef EIGEN_HAS_VARIADIC_TEMPLATES
+#if EIGEN_HAS_VARIADIC_TEMPLATES
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE array(std::initializer_list<T> l) {
     eigen_assert(l.size() == n);
@@ -167,7 +167,7 @@ template <typename T> class array<T, 0> {
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE array() : dummy() { }
 
-#ifdef EIGEN_HAS_VARIADIC_TEMPLATES
+#if EIGEN_HAS_VARIADIC_TEMPLATES
   EIGEN_DEVICE_FUNC array(std::initializer_list<T> l) : dummy() {
     eigen_assert(l.size() == 0);
   }
@@ -222,7 +222,7 @@ template<class T, std::size_t N> struct array_size<const array<T,N>& > {
 
 #else
 
-// The compiler supports c++11, and we're not targetting cuda: use std::array as Eigen array
+// The compiler supports c++11, and we're not targetting cuda: use std::array as Eigen::array
 #include <array>
 namespace Eigen {
 
@@ -263,9 +263,5 @@ template<class T, std::size_t N> struct array_size<std::array<T,N> > {
 }  // end namespace Eigen
 
 #endif
-
-
-
-
 
 #endif  // EIGEN_EMULATE_ARRAY_H

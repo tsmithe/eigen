@@ -16,6 +16,10 @@
 #include <math_constants.h>
 #endif
 
+#if EIGEN_COMP_ICC>=1600 &&  __cplusplus >= 201103L
+#include <cstdint>
+#endif
+
 namespace Eigen {
 
 namespace internal {
@@ -26,6 +30,16 @@ namespace internal {
   * \note In case you wonder, yes we're aware that Boost already provides all these features,
   * we however don't want to add a dependency to Boost.
   */
+
+// Only recent versions of ICC complain about using ptrdiff_t to hold pointers,
+// and older versions do not provide *intptr_t types.
+#if EIGEN_COMP_ICC>=1600 &&  __cplusplus >= 201103L
+typedef std::intptr_t  IntPtr;
+typedef std::uintptr_t UIntPtr;
+#else
+typedef std::ptrdiff_t IntPtr;
+typedef std::size_t UIntPtr;
+#endif
 
 struct true_type {  enum { value = 1 }; };
 struct false_type { enum { value = 0 }; };
@@ -115,7 +129,14 @@ private:
 
 public:
   static From ms_from;
+#ifdef __INTEL_COMPILER
+  #pragma warning push
+  #pragma warning ( disable : 2259 )
+#endif
   enum { value = sizeof(test(ms_from, 0))==sizeof(yes) };
+#ifdef __INTEL_COMPILER
+  #pragma warning pop
+#endif
 };
 
 template<typename From, typename To>
@@ -128,7 +149,7 @@ struct is_convertible
 /** \internal Allows to enable/disable an overload
   * according to a compile time condition.
   */
-template<bool Condition, typename T> struct enable_if;
+template<bool Condition, typename T=void> struct enable_if;
 
 template<typename T> struct enable_if<true,T>
 { typedef T type; };
@@ -254,7 +275,7 @@ protected:
   * upcoming next STL generation (using a templated result member).
   * If none of these members is provided, then the type of the first argument is returned. FIXME, that behavior is a pretty bad hack.
   */
-#ifdef EIGEN_HAS_STD_RESULT_OF
+#if EIGEN_HAS_STD_RESULT_OF
 template<typename T> struct result_of {
   typedef typename std::result_of<T>::type type1;
   typedef typename remove_all<type1>::type type;
@@ -311,6 +332,30 @@ struct result_of<Func(ArgType0,ArgType1)> {
     enum {FunctorType = sizeof(testFunctor(static_cast<Func*>(0)))};
     typedef typename binary_result_of_select<Func, ArgType0, ArgType1, FunctorType>::type type;
 };
+
+template<typename Func, typename ArgType0, typename ArgType1, typename ArgType2, int SizeOf=sizeof(has_none)>
+struct ternary_result_of_select {typedef typename internal::remove_all<ArgType0>::type type;};
+
+template<typename Func, typename ArgType0, typename ArgType1, typename ArgType2>
+struct ternary_result_of_select<Func, ArgType0, ArgType1, ArgType2, sizeof(has_std_result_type)>
+{typedef typename Func::result_type type;};
+
+template<typename Func, typename ArgType0, typename ArgType1, typename ArgType2>
+struct ternary_result_of_select<Func, ArgType0, ArgType1, ArgType2, sizeof(has_tr1_result)>
+{typedef typename Func::template result<Func(ArgType0,ArgType1,ArgType2)>::type type;};
+
+template<typename Func, typename ArgType0, typename ArgType1, typename ArgType2>
+struct result_of<Func(ArgType0,ArgType1,ArgType2)> {
+    template<typename T>
+    static has_std_result_type    testFunctor(T const *, typename T::result_type const * = 0);
+    template<typename T>
+    static has_tr1_result         testFunctor(T const *, typename T::template result<T(ArgType0,ArgType1,ArgType2)>::type const * = 0);
+    static has_none               testFunctor(...);
+
+    // note that the following indirection is needed for gcc-3.3
+    enum {FunctorType = sizeof(testFunctor(static_cast<Func*>(0)))};
+    typedef typename ternary_result_of_select<Func, ArgType0, ArgType1, ArgType2, FunctorType>::type type;
+};
 #endif
 
 /** \internal In short, it computes int(sqrt(\a Y)) with \a Y an integer.
@@ -358,33 +403,6 @@ template<typename T, typename U> struct scalar_product_traits
   enum { Defined = 0 };
 };
 
-template<typename T> struct scalar_product_traits<T,T>
-{
-  enum {
-    // Cost = NumTraits<T>::MulCost,
-    Defined = 1
-  };
-  typedef T ReturnType;
-};
-
-template<typename T> struct scalar_product_traits<T,std::complex<T> >
-{
-  enum {
-    // Cost = 2*NumTraits<T>::MulCost,
-    Defined = 1
-  };
-  typedef std::complex<T> ReturnType;
-};
-
-template<typename T> struct scalar_product_traits<std::complex<T>, T>
-{
-  enum {
-    // Cost = 2*NumTraits<T>::MulCost,
-    Defined = 1
-  };
-  typedef std::complex<T> ReturnType;
-};
-
 // FIXME quick workaround around current limitation of result_of
 // template<typename Scalar, typename ArgType0, typename ArgType1>
 // struct result_of<scalar_product_op<Scalar>(ArgType0,ArgType1)> {
@@ -416,6 +434,67 @@ T div_ceil(const T &a, const T &b)
 }
 
 } // end namespace numext
+
+
+/** \class ScalarBinaryOpTraits
+  * \ingroup Core_Module
+  *
+  * \brief Determines whether the given binary operation of two numeric types is allowed and what the scalar return type is.
+  *
+  * \sa CwiseBinaryOp
+  */
+template<typename ScalarA, typename ScalarB, typename BinaryOp=void>
+struct ScalarBinaryOpTraits
+#ifndef EIGEN_PARSED_BY_DOXYGEN
+  // for backward compatibility, use the hints given by the (deprecated) internal::scalar_product_traits class.
+  : internal::scalar_product_traits<ScalarA,ScalarB>
+#endif // EIGEN_PARSED_BY_DOXYGEN
+{};
+
+template<typename T, typename BinaryOp>
+struct ScalarBinaryOpTraits<T,T,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef T ReturnType;
+};
+
+// For Matrix * Permutation
+template<typename T, typename BinaryOp>
+struct ScalarBinaryOpTraits<T,void,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef T ReturnType;
+};
+
+// For Permutation * Matrix
+template<typename T, typename BinaryOp>
+struct ScalarBinaryOpTraits<void,T,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef T ReturnType;
+};
+
+// for Permutation*Permutation
+template<typename BinaryOp>
+struct ScalarBinaryOpTraits<void,void,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef void ReturnType;
+};
+
+template<typename T, typename BinaryOp>
+struct ScalarBinaryOpTraits<T,std::complex<T>,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef std::complex<T> ReturnType;
+};
+
+template<typename T, typename BinaryOp>
+struct ScalarBinaryOpTraits<std::complex<T>, T,BinaryOp>
+{
+  enum { Defined = 1 };
+  typedef std::complex<T> ReturnType;
+};
 
 } // end namespace Eigen
 

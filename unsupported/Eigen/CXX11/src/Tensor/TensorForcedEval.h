@@ -34,7 +34,7 @@ struct traits<TensorForcedEvalOp<XprType> >
   static const int Layout = XprTraits::Layout;
 
   enum {
-    Flags = 0,
+    Flags = 0
   };
 };
 
@@ -55,7 +55,7 @@ struct nested<TensorForcedEvalOp<XprType>, 1, typename eval<TensorForcedEvalOp<X
 
 
 template<typename XprType>
-class TensorForcedEvalOp : public TensorBase<TensorForcedEvalOp<XprType> >
+class TensorForcedEvalOp : public TensorBase<TensorForcedEvalOp<XprType>, ReadOnlyAccessors>
 {
   public:
   typedef typename Eigen::internal::traits<TensorForcedEvalOp>::Scalar Scalar;
@@ -90,7 +90,7 @@ struct TensorEvaluator<const TensorForcedEvalOp<ArgType>, Device>
 
   enum {
     IsAligned = true,
-    PacketAccess = (internal::packet_traits<Scalar>::size > 1),
+    PacketAccess = (PacketSize > 1),
     Layout = TensorEvaluator<ArgType, Device>::Layout,
     RawAccess = true
   };

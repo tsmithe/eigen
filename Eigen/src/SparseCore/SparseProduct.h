@@ -99,10 +99,10 @@ struct generic_product_impl<Lhs, Rhs, SparseTriangularShape, SparseShape, Produc
 
 // dense = sparse-product (can be sparse*sparse, sparse*perm, etc.)
 template< typename DstXprType, typename Lhs, typename Rhs>
-struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::assign_op<typename DstXprType::Scalar>, Sparse2Dense>
+struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::assign_op<typename DstXprType::Scalar,typename Product<Lhs,Rhs,AliasFreeProduct>::Scalar>, Sparse2Dense>
 {
   typedef Product<Lhs,Rhs,AliasFreeProduct> SrcXprType;
-  static void run(DstXprType &dst, const SrcXprType &src, const internal::assign_op<typename DstXprType::Scalar> &)
+  static void run(DstXprType &dst, const SrcXprType &src, const internal::assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &)
   {
     generic_product_impl<Lhs, Rhs>::evalTo(dst,src.lhs(),src.rhs());
   }
@@ -110,10 +110,10 @@ struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::assig
 
 // dense += sparse-product (can be sparse*sparse, sparse*perm, etc.)
 template< typename DstXprType, typename Lhs, typename Rhs>
-struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::add_assign_op<typename DstXprType::Scalar>, Sparse2Dense>
+struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::add_assign_op<typename DstXprType::Scalar,typename Product<Lhs,Rhs,AliasFreeProduct>::Scalar>, Sparse2Dense>
 {
   typedef Product<Lhs,Rhs,AliasFreeProduct> SrcXprType;
-  static void run(DstXprType &dst, const SrcXprType &src, const internal::add_assign_op<typename DstXprType::Scalar> &)
+  static void run(DstXprType &dst, const SrcXprType &src, const internal::add_assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &)
   {
     generic_product_impl<Lhs, Rhs>::addTo(dst,src.lhs(),src.rhs());
   }
@@ -121,24 +121,24 @@ struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::add_a
 
 // dense -= sparse-product (can be sparse*sparse, sparse*perm, etc.)
 template< typename DstXprType, typename Lhs, typename Rhs>
-struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::sub_assign_op<typename DstXprType::Scalar>, Sparse2Dense>
+struct Assignment<DstXprType, Product<Lhs,Rhs,AliasFreeProduct>, internal::sub_assign_op<typename DstXprType::Scalar,typename Product<Lhs,Rhs,AliasFreeProduct>::Scalar>, Sparse2Dense>
 {
   typedef Product<Lhs,Rhs,AliasFreeProduct> SrcXprType;
-  static void run(DstXprType &dst, const SrcXprType &src, const internal::sub_assign_op<typename DstXprType::Scalar> &)
+  static void run(DstXprType &dst, const SrcXprType &src, const internal::sub_assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &)
   {
     generic_product_impl<Lhs, Rhs>::subTo(dst,src.lhs(),src.rhs());
   }
 };
 
 template<typename Lhs, typename Rhs, int Options>
-struct evaluator<SparseView<Product<Lhs, Rhs, Options> > > 
+struct unary_evaluator<SparseView<Product<Lhs, Rhs, Options> >, IteratorBased>
  : public evaluator<typename Product<Lhs, Rhs, DefaultProduct>::PlainObject>
 {
   typedef SparseView<Product<Lhs, Rhs, Options> > XprType;
   typedef typename XprType::PlainObject PlainObject;
   typedef evaluator<PlainObject> Base;
-  
-  explicit evaluator(const XprType& xpr)
+
+  explicit unary_evaluator(const XprType& xpr)
     : m_result(xpr.rows(), xpr.cols())
   {
     using std::abs;
@@ -147,13 +147,13 @@ struct evaluator<SparseView<Product<Lhs, Rhs, Options> > >
     typedef typename nested_eval<Rhs,Dynamic>::type RhsNested;
     LhsNested lhsNested(xpr.nestedExpression().lhs());
     RhsNested rhsNested(xpr.nestedExpression().rhs());
-    
+
     internal::sparse_sparse_product_with_pruning_selector<typename remove_all<LhsNested>::type,
                                                           typename remove_all<RhsNested>::type, PlainObject>::run(lhsNested,rhsNested,m_result,
                                                                                                                   abs(xpr.reference())*xpr.epsilon());
   }
-  
-protected:  
+
+protected:
   PlainObject m_result;
 };
 

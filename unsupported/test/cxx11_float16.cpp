@@ -31,11 +31,11 @@ void test_conversion()
   VERIFY_IS_EQUAL(half(1.19209e-07f).x, 0x0002);
 
   // Verify round-to-nearest-even behavior.
-  float val1 = float(half(__half{0x3c00}));
-  float val2 = float(half(__half{0x3c01}));
-  float val3 = float(half(__half{0x3c02}));
-  VERIFY_IS_EQUAL(half(0.5 * (val1 + val2)).x, 0x3c00);
-  VERIFY_IS_EQUAL(half(0.5 * (val2 + val3)).x, 0x3c02);
+  float val1 = float(half(__half(0x3c00)));
+  float val2 = float(half(__half(0x3c01)));
+  float val3 = float(half(__half(0x3c02)));
+  VERIFY_IS_EQUAL(half(0.5f * (val1 + val2)).x, 0x3c00);
+  VERIFY_IS_EQUAL(half(0.5f * (val2 + val3)).x, 0x3c02);
 
   // Conversion from int.
   VERIFY_IS_EQUAL(half(-1).x, 0xbc00);
@@ -49,21 +49,21 @@ void test_conversion()
   VERIFY_IS_EQUAL(half(true).x, 0x3c00);
 
   // Conversion to float.
-  VERIFY_IS_EQUAL(float(half(__half{0x0000})), 0.0f);
-  VERIFY_IS_EQUAL(float(half(__half{0x3c00})), 1.0f);
+  VERIFY_IS_EQUAL(float(half(__half(0x0000))), 0.0f);
+  VERIFY_IS_EQUAL(float(half(__half(0x3c00))), 1.0f);
 
   // Denormals.
-  VERIFY_IS_APPROX(float(half(__half{0x8001})), -5.96046e-08f);
-  VERIFY_IS_APPROX(float(half(__half{0x0001})), 5.96046e-08f);
-  VERIFY_IS_APPROX(float(half(__half{0x0002})), 1.19209e-07f);
+  VERIFY_IS_APPROX(float(half(__half(0x8001))), -5.96046e-08f);
+  VERIFY_IS_APPROX(float(half(__half(0x0001))), 5.96046e-08f);
+  VERIFY_IS_APPROX(float(half(__half(0x0002))), 1.19209e-07f);
 
   // NaNs and infinities.
   VERIFY(!(numext::isinf)(float(half(65504.0f))));  // Largest finite number.
   VERIFY(!(numext::isnan)(float(half(0.0f))));
-  VERIFY((numext::isinf)(float(half(__half{0xfc00}))));
-  VERIFY((numext::isnan)(float(half(__half{0xfc01}))));
-  VERIFY((numext::isinf)(float(half(__half{0x7c00}))));
-  VERIFY((numext::isnan)(float(half(__half{0x7c01}))));
+  VERIFY((numext::isinf)(float(half(__half(0xfc00)))));
+  VERIFY((numext::isnan)(float(half(__half(0xfc01)))));
+  VERIFY((numext::isinf)(float(half(__half(0x7c00)))));
+  VERIFY((numext::isnan)(float(half(__half(0x7c01)))));
 
 #if !EIGEN_COMP_MSVC
   // Visual Studio errors out on divisions by 0
@@ -73,12 +73,12 @@ void test_conversion()
 #endif
 
   // Exactly same checks as above, just directly on the half representation.
-  VERIFY(!(numext::isinf)(half(__half{0x7bff})));
-  VERIFY(!(numext::isnan)(half(__half{0x0000})));
-  VERIFY((numext::isinf)(half(__half{0xfc00})));
-  VERIFY((numext::isnan)(half(__half{0xfc01})));
-  VERIFY((numext::isinf)(half(__half{0x7c00})));
-  VERIFY((numext::isnan)(half(__half{0x7c01})));
+  VERIFY(!(numext::isinf)(half(__half(0x7bff))));
+  VERIFY(!(numext::isnan)(half(__half(0x0000))));
+  VERIFY((numext::isinf)(half(__half(0xfc00))));
+  VERIFY((numext::isnan)(half(__half(0xfc01))));
+  VERIFY((numext::isinf)(half(__half(0x7c00))));
+  VERIFY((numext::isnan)(half(__half(0x7c01))));
 
 #if !EIGEN_COMP_MSVC
   // Visual Studio errors out on divisions by 0
@@ -86,6 +86,16 @@ void test_conversion()
   VERIFY((numext::isinf)(half(1.0 / 0.0)));
   VERIFY((numext::isinf)(half(-1.0 / 0.0)));
 #endif
+}
+
+void test_numtraits()
+{
+  std::cout << "expsilin = " << NumTraits<half>::epsilon() << std::endl;
+  std::cout << "highest = " << NumTraits<half>::highest() << std::endl;
+  std::cout << "lowest = " << NumTraits<half>::lowest() << std::endl;
+  std::cout << "inifinty = " << NumTraits<half>::infinity() << std::endl;
+  std::cout << "nan = " << NumTraits<half>::quiet_NaN() << std::endl;
+
 }
 
 void test_arithmetic()
@@ -155,7 +165,7 @@ void test_basic_functions()
   VERIFY_IS_APPROX(float(numext::pow(half(2.0f), half(2.0f))), 4.0f);
 
   VERIFY_IS_EQUAL(float(numext::exp(half(0.0f))), 1.0f);
-  VERIFY_IS_APPROX(float(numext::exp(half(EIGEN_PI))), float(20.0 + EIGEN_PI));
+  VERIFY_IS_APPROX(float(numext::exp(half(EIGEN_PI))), 20.f + float(EIGEN_PI));
 
   VERIFY_IS_EQUAL(float(numext::log(half(1.0f))), 0.0f);
   VERIFY_IS_APPROX(float(numext::log(half(10.0f))), 2.30273f);
@@ -185,6 +195,7 @@ void test_trigonometric_functions()
 void test_cxx11_float16()
 {
   CALL_SUBTEST(test_conversion());
+  CALL_SUBTEST(test_numtraits());
   CALL_SUBTEST(test_arithmetic());
   CALL_SUBTEST(test_comparison());
   CALL_SUBTEST(test_basic_functions());

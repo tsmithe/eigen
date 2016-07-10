@@ -266,7 +266,7 @@ struct functor_traits<scalar_exp_op<Scalar> > {
   *
   * \brief Template functor to compute the logarithm of a scalar
   *
-  * \sa class CwiseUnaryOp, Cwise::log()
+  * \sa class CwiseUnaryOp, ArrayBase::log()
   */
 template<typename Scalar> struct scalar_log_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_log_op)
@@ -290,6 +290,26 @@ struct functor_traits<scalar_log_op<Scalar> > {
 #endif
      // Measured cost of std::log.
      : sizeof(Scalar)==4 ? 40 : 85)
+  };
+};
+
+/** \internal
+  *
+  * \brief Template functor to compute the logarithm of 1 plus a scalar value
+  *
+  * \sa class CwiseUnaryOp, ArrayBase::log1p()
+  */
+template<typename Scalar> struct scalar_log1p_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_log1p_op)
+  EIGEN_DEVICE_FUNC inline const Scalar operator() (const Scalar& a) const { return numext::log1p(a); }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& a) const { return internal::plog1p(a); }
+};
+template <typename Scalar>
+struct functor_traits<scalar_log1p_op<Scalar> > {
+  enum {
+    PacketAccess = packet_traits<Scalar>::HasLog1p,
+    Cost = functor_traits<scalar_log_op<Scalar> >::Cost // TODO measure cost of log1p
   };
 };
 
@@ -616,7 +636,53 @@ template<typename Scalar> struct scalar_tanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_tanh_op)
   EIGEN_DEVICE_FUNC inline const Scalar operator() (const Scalar& a) const { return numext::tanh(a); }
   template <typename Packet>
-  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& a) const { return internal::ptanh(a); }
+  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& _x) const {
+    /** \internal \returns the hyperbolic tan of \a a (coeff-wise)
+        Doesn't do anything fancy, just a 13/6-degree rational interpolant which
+        is accurate up to a couple of ulp in the range [-9, 9], outside of which the
+        fl(tanh(x)) = +/-1. */
+
+    // Clamp the inputs to the range [-9, 9] since anything outside
+    // this range is +/-1.0f in single-precision.
+    const Packet plus_9 = pset1<Packet>(9.0);
+    const Packet minus_9 = pset1<Packet>(-9.0);
+    const Packet x = pmax(minus_9, pmin(plus_9, _x));
+    
+    // The monomial coefficients of the numerator polynomial (odd).
+    const Packet alpha_1 = pset1<Packet>(4.89352455891786e-03);
+    const Packet alpha_3 = pset1<Packet>(6.37261928875436e-04);
+    const Packet alpha_5 = pset1<Packet>(1.48572235717979e-05);
+    const Packet alpha_7 = pset1<Packet>(5.12229709037114e-08);
+    const Packet alpha_9 = pset1<Packet>(-8.60467152213735e-11);
+    const Packet alpha_11 = pset1<Packet>(2.00018790482477e-13);
+    const Packet alpha_13 = pset1<Packet>(-2.76076847742355e-16);
+    
+    // The monomial coefficients of the denominator polynomial (even).
+    const Packet beta_0 = pset1<Packet>(4.89352518554385e-03);
+    const Packet beta_2 = pset1<Packet>(2.26843463243900e-03);
+    const Packet beta_4 = pset1<Packet>(1.18534705686654e-04);
+    const Packet beta_6 = pset1<Packet>(1.19825839466702e-06);
+    
+    // Since the polynomials are odd/even, we need x^2.
+    const Packet x2 = pmul(x, x);
+  
+  // Evaluate the numerator polynomial p.
+    Packet p = pmadd(x2, alpha_13, alpha_11);
+    p = pmadd(x2, p, alpha_9);
+    p = pmadd(x2, p, alpha_7);
+    p = pmadd(x2, p, alpha_5);
+    p = pmadd(x2, p, alpha_3);
+    p = pmadd(x2, p, alpha_1);
+    p = pmul(x, p);
+    
+    // Evaluate the denominator polynomial p.
+    Packet q = pmadd(x2, beta_6, beta_4);
+    q = pmadd(x2, q, beta_2);
+    q = pmadd(x2, q, beta_0);
+    
+    // Divide the numerator by the denominator.
+    return pdiv(p, q);
+  }
 };
 template<typename Scalar>
 struct functor_traits<scalar_tanh_op<Scalar> >
@@ -880,9 +946,9 @@ struct scalar_sign_op<Scalar,true> {
   {
     typedef typename NumTraits<Scalar>::Real real_type;
     real_type aa = numext::abs(a);
-    if (aa==0)
+    if (aa==real_type(0))
       return Scalar(0);
-    aa = 1./aa;
+    aa = real_type(1)/aa;
     return Scalar(real(a)*aa, imag(a)*aa );
   }
   //TODO
