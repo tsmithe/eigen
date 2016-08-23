@@ -131,7 +131,7 @@ double loadConstant(const double* address) {
 }
 template <> EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
 Eigen::half loadConstant(const Eigen::half* address) {
-  return Eigen::half(internal::raw_uint16_to_half(__ldg(&address->x)));
+  return Eigen::half(half_impl::raw_uint16_to_half(__ldg(&address->x)));
 }
 #endif
 }
@@ -574,7 +574,7 @@ struct TensorEvaluator<const TensorSelectOp<IfArgType, ThenArgType, ElseArgType>
         .cwiseMax(m_elseImpl.costPerCoeff(vectorized));
   }
 
-  EIGEN_DEVICE_FUNC CoeffReturnType* data() const { return NULL; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE CoeffReturnType* data() const { return NULL; }
 
  private:
   TensorEvaluator<IfArgType, Device> m_condImpl;

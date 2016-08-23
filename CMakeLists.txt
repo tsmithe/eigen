@@ -1,4 +1,4 @@
-project(Eigen)
+project(Eigen3)
 
 cmake_minimum_required(VERSION 2.8.5)
 
@@ -7,6 +7,11 @@ cmake_minimum_required(VERSION 2.8.5)
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
   message(FATAL_ERROR "In-source builds not allowed. Please make a new directory (called a build directory) and run CMake from there. You may need to remove CMakeCache.txt. ")
 endif()
+
+# Alias Eigen_*_DIR to Eigen3_*_DIR:
+
+set(Eigen_SOURCE_DIR ${Eigen3_SOURCE_DIR})
+set(Eigen_BINARY_DIR ${Eigen3_BINARY_DIR})
 
 # guard against bad build-type strings
 
@@ -93,9 +98,11 @@ else()
 endif()
 
 option(EIGEN_BUILD_BTL "Build benchmark suite" OFF)
-if(NOT WIN32)
+
+# Disable pkgconfig only for native Windows builds
+if(NOT WIN32 OR NOT CMAKE_HOST_SYSTEM_NAME MATCHES Windows)
   option(EIGEN_BUILD_PKGCONFIG "Build pkg-config .pc file for Eigen" ON)
-endif(NOT WIN32)
+endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -398,7 +405,7 @@ if(EIGEN_BUILD_PKGCONFIG)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/eigen3.pc
         DESTINATION ${PKGCONFIG_INSTALL_DIR}
         )
-endif(EIGEN_BUILD_PKGCONFIG)
+endif()
 
 add_subdirectory(Eigen)
 

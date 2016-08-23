@@ -615,16 +615,18 @@ struct random_default_impl<Scalar, false, true>
     typedef typename conditional<NumTraits<Scalar>::IsSigned,std::ptrdiff_t,std::size_t>::type ScalarX;
     if(y<x)
       return x;
+    // the following difference might overflow on a 32 bits system,
+    // but since y>=x the result converted to an unsigned long is still correct.
     std::size_t range = ScalarX(y)-ScalarX(x);
     std::size_t offset = 0;
     // rejection sampling
-    std::size_t divisor    = (range+RAND_MAX-1)/(range+1);
-    std::size_t multiplier = (range+RAND_MAX-1)/std::size_t(RAND_MAX);
-
+    std::size_t divisor = 1;
+    std::size_t multiplier = 1;
+    if(range<RAND_MAX) divisor = (std::size_t(RAND_MAX)+1)/(range+1);
+    else               multiplier = 1 + range/(std::size_t(RAND_MAX)+1);
     do {
-      offset = ( (std::size_t(std::rand()) * multiplier) / divisor );
+      offset = (std::size_t(std::rand()) * multiplier) / divisor;
     } while (offset > range);
-
     return Scalar(ScalarX(x) + offset);
   }
 
@@ -784,6 +786,8 @@ template<> EIGEN_TMP_NOOPT_ATTRIB bool isinf_impl(const long double& x) { return
 template<typename T> EIGEN_DEVICE_FUNC bool isfinite_impl(const std::complex<T>& x);
 template<typename T> EIGEN_DEVICE_FUNC bool isnan_impl(const std::complex<T>& x);
 template<typename T> EIGEN_DEVICE_FUNC bool isinf_impl(const std::complex<T>& x);
+
+template<typename T> T generic_fast_tanh_float(const T& a_x);
 
 } // end namespace internal
 
@@ -1175,6 +1179,11 @@ T tanh(const T &x) {
   EIGEN_USING_STD_MATH(tanh);
   return tanh(x);
 }
+
+#if (!defined(__CUDACC__)) && EIGEN_FAST_MATH
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
+float tanh(float x) { return internal::generic_fast_tanh_float(x); }
+#endif
 
 #ifdef __CUDACC__
 template<> EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
