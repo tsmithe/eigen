@@ -494,13 +494,13 @@ class PlainObjectBase : public internal::dense_xpr_base<Derived>::type
 
 #if EIGEN_HAS_RVALUE_REFERENCES
     EIGEN_DEVICE_FUNC
-    PlainObjectBase(PlainObjectBase&& other)
+    PlainObjectBase(PlainObjectBase&& other) EIGEN_NOEXCEPT
       : m_storage( std::move(other.m_storage) )
     {
     }
 
     EIGEN_DEVICE_FUNC
-    PlainObjectBase& operator=(PlainObjectBase&& other)
+    PlainObjectBase& operator=(PlainObjectBase&& other) EIGEN_NOEXCEPT
     {
       using std::swap;
       swap(m_storage, other.m_storage);
@@ -718,7 +718,7 @@ class PlainObjectBase : public internal::dense_xpr_base<Derived>::type
       //_resize_to_match(other);
       // the 'false' below means to enforce lazy evaluation. We don't use lazyAssign() because
       // it wouldn't allow to copy a row-vector into a column-vector.
-      internal::call_assignment_no_alias(this->derived(), other.derived(), internal::assign_op<Scalar>());
+      internal::call_assignment_no_alias(this->derived(), other.derived(), internal::assign_op<Scalar,typename OtherDerived::Scalar>());
       return this->derived();
     }
 

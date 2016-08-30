@@ -9,6 +9,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #include "main.h"
+#include "unsupported/Eigen/SpecialFunctions"
 
 #if defined __GNUC__ && __GNUC__>=6
   #pragma GCC diagnostic ignored "-Wignored-attributes"
@@ -402,6 +403,7 @@ template<typename Scalar> void packetmath_real()
   CHECK_CWISE1_IF(PacketTraits::HasSqrt, std::sqrt, internal::psqrt);
   CHECK_CWISE1_IF(PacketTraits::HasLog, std::log, internal::plog);
 #if EIGEN_HAS_C99_MATH && (__cplusplus > 199711L)
+  CHECK_CWISE1_IF(PacketTraits::HasLog1p, std::log1p, internal::plog1p);
   CHECK_CWISE1_IF(internal::packet_traits<Scalar>::HasLGamma, std::lgamma, internal::plgamma);
   CHECK_CWISE1_IF(internal::packet_traits<Scalar>::HasErf, std::erf, internal::perf);
   CHECK_CWISE1_IF(internal::packet_traits<Scalar>::HasErfc, std::erfc, internal::perfc);

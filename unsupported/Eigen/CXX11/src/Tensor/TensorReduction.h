@@ -264,7 +264,7 @@ struct FullReducer<Self, Op, ThreadPoolDevice, Vectorizable> {
     const Index numblocks = blocksize > 0 ? num_coeffs / blocksize : 0;
     eigen_assert(num_coeffs >= numblocks * blocksize);
 
-    Barrier barrier(numblocks);
+    Barrier barrier(internal::convert_index<unsigned int>(numblocks));
     MaxSizeVector<typename Self::CoeffReturnType> shards(numblocks, reducer.initialize());
     for (Index i = 0; i < numblocks; ++i) {
       device.enqueue_with_barrier(&barrier, &FullReducerShard<Self, Op, Vectorizable>::run,
@@ -316,7 +316,7 @@ struct OuterReducer {
 
 #if defined(EIGEN_USE_GPU) && defined(__CUDACC__)
 template <int B, int N, typename S, typename R, typename I>
-__global__ void FullReductionKernel(R, const S, I, typename S::CoeffReturnType*);
+__global__ void FullReductionKernel(R, const S, I, typename S::CoeffReturnType*, unsigned int*);
 
 
 #ifdef EIGEN_HAS_CUDA_FP16
@@ -492,7 +492,7 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
     }
 
     // Attempt to use an optimized reduction.
-    else if (RunningOnGPU && data && (m_device.majorDeviceVersion() >= 3)) {
+    else if (RunningOnGPU && (m_device.majorDeviceVersion() >= 3)) {
       bool reducing_inner_dims = true;
       for (int i = 0; i < NumReducedDims; ++i) {
         if (static_cast<int>(Layout) == static_cast<int>(ColMajor)) {
@@ -505,8 +505,20 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
           (reducing_inner_dims || ReducingInnerMostDims)) {
         const Index num_values_to_reduce = internal::array_prod(m_reducedDims);
         const Index num_coeffs_to_preserve = internal::array_prod(m_dimensions);
+        if (!data && num_coeffs_to_preserve < 1024 && num_values_to_reduce > num_coeffs_to_preserve && num_values_to_reduce > 128) {
+          data = static_cast<CoeffReturnType*>(m_device.allocate(sizeof(CoeffReturnType) * num_coeffs_to_preserve));
+          m_result = data;
+        }
         Op reducer(m_reducer);
-        return internal::InnerReducer<Self, Op, Device>::run(*this, reducer, m_device, data, num_values_to_reduce, num_coeffs_to_preserve);
+        if (internal::InnerReducer<Self, Op, Device>::run(*this, reducer, m_device, data, num_values_to_reduce, num_coeffs_to_preserve)) {
+          if (m_result) {
+            m_device.deallocate(m_result);
+            m_result = NULL;
+          }
+          return true;
+        } else {
+          return (m_result != NULL);
+        }
       }
 
       bool preserving_inner_dims = true;
@@ -521,8 +533,20 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
           preserving_inner_dims) {
         const Index num_values_to_reduce = internal::array_prod(m_reducedDims);
         const Index num_coeffs_to_preserve = internal::array_prod(m_dimensions);
+        if (!data && num_coeffs_to_preserve < 1024 && num_values_to_reduce > num_coeffs_to_preserve && num_values_to_reduce > 32) {
+          data = static_cast<CoeffReturnType*>(m_device.allocate(sizeof(CoeffReturnType) * num_coeffs_to_preserve));
+          m_result = data;
+        }
         Op reducer(m_reducer);
-        return internal::OuterReducer<Self, Op, Device>::run(*this, reducer, m_device, data, num_values_to_reduce, num_coeffs_to_preserve);
+        if (internal::OuterReducer<Self, Op, Device>::run(*this, reducer, m_device, data, num_values_to_reduce, num_coeffs_to_preserve)) {
+          if (m_result) {
+            m_device.deallocate(m_result);
+            m_result = NULL;
+          }
+          return true;
+        } else {
+          return (m_result != NULL);
+        }
       }
     }
     return true;
@@ -537,8 +561,8 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE CoeffReturnType coeff(Index index) const
   {
-    if (RunningFullReduction && m_result) {
-      return *m_result;
+    if ((RunningFullReduction || RunningOnGPU) && m_result) {
+      return *(m_result + index);
     }
     Op reducer(m_reducer);
     if (ReducingInnerMostDims || RunningFullReduction) {
@@ -558,7 +582,11 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE PacketReturnType packet(Index index) const
   {
     EIGEN_STATIC_ASSERT((PacketSize > 1), YOU_MADE_A_PROGRAMMING_MISTAKE)
-    eigen_assert(index + PacketSize - 1 < dimensions().TotalSize());
+    eigen_assert(index + PacketSize - 1 < Index(internal::array_prod(dimensions())));
+
+    if (RunningOnGPU && m_result) {
+      return internal::pload<PacketReturnType>(m_result + index);
+    }
 
     EIGEN_ALIGN_MAX typename internal::remove_const<CoeffReturnType>::type values[PacketSize];
     if (ReducingInnerMostDims) {
@@ -616,7 +644,7 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
   template <typename S, typename O, bool V> friend struct internal::FullReducerShard;
 #endif
 #if defined(EIGEN_USE_GPU) && defined(__CUDACC__)
-  template <int B, int N, typename S, typename R, typename I> friend void internal::FullReductionKernel(R, const S, I, typename S::CoeffReturnType*);
+  template <int B, int N, typename S, typename R, typename I> friend void internal::FullReductionKernel(R, const S, I, typename S::CoeffReturnType*, unsigned int*);
 #ifdef EIGEN_HAS_CUDA_FP16
   template <typename S, typename R, typename I> friend void internal::ReductionInitFullReduxKernelHalfFloat(R, const S, I, half2*);
   template <int B, int N, typename S, typename R, typename I> friend void internal::FullReductionKernelHalfFloat(R, const S, I, half*, half2*);

@@ -13,7 +13,7 @@
 
 #define EIGEN_WORLD_VERSION 3
 #define EIGEN_MAJOR_VERSION 2
-#define EIGEN_MINOR_VERSION 92
+#define EIGEN_MINOR_VERSION 93
 
 #define EIGEN_VERSION_AT_LEAST(x,y,z) (EIGEN_WORLD_VERSION>x || (EIGEN_WORLD_VERSION>=x && \
                                       (EIGEN_MAJOR_VERSION>y || (EIGEN_MAJOR_VERSION>=y && \
@@ -28,9 +28,9 @@
   #define EIGEN_COMP_GNUC 0
 #endif
 
-/// \internal EIGEN_COMP_CLANG set to 1 if the compiler is clang (alias for __clang__)
+/// \internal EIGEN_COMP_CLANG set to major+minor version (e.g., 307 for clang 3.7) if the compiler is clang
 #if defined(__clang__)
-  #define EIGEN_COMP_CLANG 1
+  #define EIGEN_COMP_CLANG (__clang_major__*100+__clang_minor__)
 #else
   #define EIGEN_COMP_CLANG 0
 #endif
@@ -70,6 +70,15 @@
 #else
   #define EIGEN_COMP_MSVC 0
 #endif
+
+// For the record, here is a table summarizing the possible values for EIGEN_COMP_MSVC:
+//  name  ver   MSC_VER
+//  2008    9      1500
+//  2010   10      1600
+//  2012   11      1700
+//  2013   12      1800
+//  2015   14      1900
+//  "15"   15      1900
 
 /// \internal EIGEN_COMP_MSVC_STRICT set to 1 if the compiler is really Microsoft Visual C++ and not ,e.g., ICC
 #if EIGEN_COMP_MSVC && !(EIGEN_COMP_ICC)
@@ -437,7 +446,8 @@
 // Does the compiler support C++11 noexcept?
 #ifndef EIGEN_HAS_CXX11_NOEXCEPT
   #if    EIGEN_MAX_CPP_VER>=11 && \
-         ((__cplusplus > 201103L) \
+         (__has_feature(cxx_noexcept) \
+      || (__cplusplus > 201103L) \
       || ((__cplusplus >= 201103L) && (EIGEN_COMP_GNUC_STRICT || EIGEN_COMP_CLANG || EIGEN_COMP_ICC>=1400)) \
       || EIGEN_COMP_MSVC >= 1900)
     #define EIGEN_HAS_CXX11_NOEXCEPT 1
@@ -460,6 +470,8 @@
 // concatenate two tokens
 #define EIGEN_CAT2(a,b) a ## b
 #define EIGEN_CAT(a,b) EIGEN_CAT2(a,b)
+
+#define EIGEN_COMMA ,
 
 // convert a token to a string
 #define EIGEN_MAKESTRING2(a) #a
@@ -875,24 +887,65 @@ namespace Eigen {
 
 #define EIGEN_IMPLIES(a,b) (!(a) || (b))
 
-#define EIGEN_MAKE_CWISE_BINARY_OP(METHOD,FUNCTOR) \
-  template<typename OtherDerived> \
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const CwiseBinaryOp<FUNCTOR<Scalar>, const Derived, const OtherDerived> \
-  (METHOD)(const EIGEN_CURRENT_STORAGE_BASE_CLASS<OtherDerived> &other) const \
-  { \
-    return CwiseBinaryOp<FUNCTOR<Scalar>, const Derived, const OtherDerived>(derived(), other.derived()); \
-  }
-
-// the expression type of a cwise product
-#define EIGEN_CWISE_PRODUCT_RETURN_TYPE(LHS,RHS) \
+// the expression type of a standard coefficient wise binary operation
+#define EIGEN_CWISE_BINARY_RETURN_TYPE(LHS,RHS,OPNAME) \
     CwiseBinaryOp< \
-      internal::scalar_product_op< \
+      EIGEN_CAT(EIGEN_CAT(internal::scalar_,OPNAME),_op)< \
           typename internal::traits<LHS>::Scalar, \
           typename internal::traits<RHS>::Scalar \
       >, \
       const LHS, \
       const RHS \
     >
+
+#define EIGEN_MAKE_CWISE_BINARY_OP(METHOD,OPNAME) \
+  template<typename OtherDerived> \
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const EIGEN_CWISE_BINARY_RETURN_TYPE(Derived,OtherDerived,OPNAME) \
+  (METHOD)(const EIGEN_CURRENT_STORAGE_BASE_CLASS<OtherDerived> &other) const \
+  { \
+    return EIGEN_CWISE_BINARY_RETURN_TYPE(Derived,OtherDerived,OPNAME)(derived(), other.derived()); \
+  }
+
+#define EIGEN_SCALAR_BINARY_SUPPORTED(OPNAME,TYPEA,TYPEB) \
+  (Eigen::internal::has_ReturnType<Eigen::ScalarBinaryOpTraits<TYPEA,TYPEB,EIGEN_CAT(EIGEN_CAT(Eigen::internal::scalar_,OPNAME),_op)<TYPEA,TYPEB>  > >::value)
+
+#define EIGEN_EXPR_BINARYOP_SCALAR_RETURN_TYPE(EXPR,SCALAR,OPNAME) \
+  CwiseBinaryOp<EIGEN_CAT(EIGEN_CAT(internal::scalar_,OPNAME),_op)<typename internal::traits<EXPR>::Scalar,SCALAR>, const EXPR, \
+                const typename internal::plain_constant_type<EXPR,SCALAR>::type>
+
+#define EIGEN_SCALAR_BINARYOP_EXPR_RETURN_TYPE(SCALAR,EXPR,OPNAME) \
+  CwiseBinaryOp<EIGEN_CAT(EIGEN_CAT(internal::scalar_,OPNAME),_op)<SCALAR,typename internal::traits<EXPR>::Scalar>, \
+                const typename internal::plain_constant_type<EXPR,SCALAR>::type, const EXPR>
+
+// Workaround for MSVC 2010 (see ML thread "patch with compile for for MSVC 2010")
+#if EIGEN_COMP_MSVC_STRICT<=1600
+#define EIGEN_MSVC10_WORKAROUND_BINARYOP_RETURN_TYPE(X) typename internal::enable_if<true,X>::type
+#else
+#define EIGEN_MSVC10_WORKAROUND_BINARYOP_RETURN_TYPE(X) X
+#endif
+
+#define EIGEN_MAKE_SCALAR_BINARY_OP_ONTHERIGHT(METHOD,OPNAME) \
+  template <typename T> EIGEN_DEVICE_FUNC inline \
+  EIGEN_MSVC10_WORKAROUND_BINARYOP_RETURN_TYPE(const EIGEN_EXPR_BINARYOP_SCALAR_RETURN_TYPE(Derived,typename internal::promote_scalar_arg<Scalar EIGEN_COMMA T EIGEN_COMMA EIGEN_SCALAR_BINARY_SUPPORTED(OPNAME,Scalar,T)>::type,OPNAME))\
+  (METHOD)(const T& scalar) const { \
+    typedef typename internal::promote_scalar_arg<Scalar,T,EIGEN_SCALAR_BINARY_SUPPORTED(OPNAME,Scalar,T)>::type PromotedT; \
+    return EIGEN_EXPR_BINARYOP_SCALAR_RETURN_TYPE(Derived,PromotedT,OPNAME)(derived(), \
+           typename internal::plain_constant_type<Derived,PromotedT>::type(derived().rows(), derived().cols(), internal::scalar_constant_op<PromotedT>(scalar))); \
+  }
+
+#define EIGEN_MAKE_SCALAR_BINARY_OP_ONTHELEFT(METHOD,OPNAME) \
+  template <typename T> EIGEN_DEVICE_FUNC inline friend \
+  EIGEN_MSVC10_WORKAROUND_BINARYOP_RETURN_TYPE(const EIGEN_SCALAR_BINARYOP_EXPR_RETURN_TYPE(typename internal::promote_scalar_arg<Scalar EIGEN_COMMA T EIGEN_COMMA EIGEN_SCALAR_BINARY_SUPPORTED(OPNAME,T,Scalar)>::type,Derived,OPNAME)) \
+  (METHOD)(const T& scalar, const StorageBaseType& matrix) { \
+    typedef typename internal::promote_scalar_arg<Scalar,T,EIGEN_SCALAR_BINARY_SUPPORTED(OPNAME,T,Scalar)>::type PromotedT; \
+    return EIGEN_SCALAR_BINARYOP_EXPR_RETURN_TYPE(PromotedT,Derived,OPNAME)( \
+           typename internal::plain_constant_type<Derived,PromotedT>::type(matrix.derived().rows(), matrix.derived().cols(), internal::scalar_constant_op<PromotedT>(scalar)), matrix.derived()); \
+  }
+
+#define EIGEN_MAKE_SCALAR_BINARY_OP(METHOD,OPNAME) \
+  EIGEN_MAKE_SCALAR_BINARY_OP_ONTHELEFT(METHOD,OPNAME) \
+  EIGEN_MAKE_SCALAR_BINARY_OP_ONTHERIGHT(METHOD,OPNAME)
+
 
 #ifdef EIGEN_EXCEPTIONS
 #  define EIGEN_THROW_X(X) throw X
@@ -911,10 +964,16 @@ namespace Eigen {
 #  define EIGEN_CATCH(X) else
 #endif
 
+
 #if EIGEN_HAS_CXX11_NOEXCEPT
+#   define EIGEN_INCLUDE_TYPE_TRAITS
+#   define EIGEN_NOEXCEPT noexcept
+#   define EIGEN_NOEXCEPT_IF(x) noexcept(x)
 #   define EIGEN_NO_THROW noexcept(true)
 #   define EIGEN_EXCEPTION_SPEC(X) noexcept(false)
 #else
+#   define EIGEN_NOEXCEPT
+#   define EIGEN_NOEXCEPT_IF(x)
 #   define EIGEN_NO_THROW throw()
 #   define EIGEN_EXCEPTION_SPEC(X) throw(X)
 #endif

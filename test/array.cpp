@@ -13,6 +13,7 @@ template<typename ArrayType> void array(const ArrayType& m)
 {
   typedef typename ArrayType::Index Index;
   typedef typename ArrayType::Scalar Scalar;
+  typedef typename ArrayType::RealScalar RealScalar;
   typedef Array<Scalar, ArrayType::RowsAtCompileTime, 1> ColVectorType;
   typedef Array<Scalar, 1, ArrayType::ColsAtCompileTime> RowVectorType;
 
@@ -72,7 +73,7 @@ template<typename ArrayType> void array(const ArrayType& m)
   VERIFY_IS_MUCH_SMALLER_THAN(abs(m1.rowwise().sum().sum() - m1.sum()), m1.abs().sum());
   if (!internal::isMuchSmallerThan(abs(m1.sum() - (m1+m2).sum()), m1.abs().sum(), test_precision<Scalar>()))
       VERIFY_IS_NOT_APPROX(((m1+m2).rowwise().sum()).sum(), m1.sum());
-  VERIFY_IS_APPROX(m1.colwise().sum(), m1.colwise().redux(internal::scalar_sum_op<Scalar>()));
+  VERIFY_IS_APPROX(m1.colwise().sum(), m1.colwise().redux(internal::scalar_sum_op<Scalar,Scalar>()));
 
   // vector-wise ops
   m3 = m1;
@@ -102,6 +103,22 @@ template<typename ArrayType> void array(const ArrayType& m)
   FixedArrayType f4(f1.data());
   VERIFY_IS_APPROX(f4, f1);
   
+  // pow
+  VERIFY_IS_APPROX(m1.pow(2), m1.square());
+  VERIFY_IS_APPROX(pow(m1,2), m1.square());
+  VERIFY_IS_APPROX(m1.pow(3), m1.cube());
+  VERIFY_IS_APPROX(pow(m1,3), m1.cube());
+  VERIFY_IS_APPROX((-m1).pow(3), -m1.cube());
+  VERIFY_IS_APPROX(pow(2*m1,3), 8*m1.cube());
+  ArrayType exponents = ArrayType::Constant(rows, cols, RealScalar(2));
+  VERIFY_IS_APPROX(Eigen::pow(m1,exponents), m1.square());
+  VERIFY_IS_APPROX(m1.pow(exponents), m1.square());
+  VERIFY_IS_APPROX(Eigen::pow(2*m1,exponents), 4*m1.square());
+  VERIFY_IS_APPROX((2*m1).pow(exponents), 4*m1.square());
+  VERIFY_IS_APPROX(Eigen::pow(m1,2*exponents), m1.square().square());
+  VERIFY_IS_APPROX(m1.pow(2*exponents), m1.square().square());
+  VERIFY_IS_APPROX(Eigen::pow(m1(0,0), exponents), ArrayType::Constant(rows,cols,m1(0,0)*m1(0,0)));
+
   // Check possible conflicts with 1D ctor
   typedef Array<Scalar, Dynamic, 1> OneDArrayType;
   OneDArrayType o1(rows);
@@ -217,12 +234,7 @@ template<typename ArrayType> void array_real(const ArrayType& m)
   VERIFY_IS_APPROX(m1.sinh(), sinh(m1));
   VERIFY_IS_APPROX(m1.cosh(), cosh(m1));
   VERIFY_IS_APPROX(m1.tanh(), tanh(m1));
-#if EIGEN_HAS_C99_MATH
-  VERIFY_IS_APPROX(m1.lgamma(), lgamma(m1));
-  VERIFY_IS_APPROX(m1.digamma(), digamma(m1));
-  VERIFY_IS_APPROX(m1.erf(), erf(m1));
-  VERIFY_IS_APPROX(m1.erfc(), erfc(m1));
-#endif  // EIGEN_HAS_C99_MATH
+
   VERIFY_IS_APPROX(m1.arg(), arg(m1));
   VERIFY_IS_APPROX(m1.round(), round(m1));
   VERIFY_IS_APPROX(m1.floor(), floor(m1));
@@ -243,6 +255,7 @@ template<typename ArrayType> void array_real(const ArrayType& m)
   m3 = m1.abs();
   VERIFY_IS_APPROX(m3.sqrt(), sqrt(abs(m1)));
   VERIFY_IS_APPROX(m3.rsqrt(), Scalar(1)/sqrt(abs(m1)));
+  VERIFY_IS_APPROX(rsqrt(m3), Scalar(1)/sqrt(abs(m1)));
   VERIFY_IS_APPROX(m3.log(), log(m3));
   VERIFY_IS_APPROX(m3.log1p(), log1p(m3));
   VERIFY_IS_APPROX(m3.log10(), log10(m3));
@@ -282,22 +295,6 @@ template<typename ArrayType> void array_real(const ArrayType& m)
   VERIFY_IS_APPROX(m1.exp(), exp(m1));
   VERIFY_IS_APPROX(m1.exp() / m2.exp(),(m1-m2).exp());
 
-  VERIFY_IS_APPROX(m1.pow(2), m1.square());
-  VERIFY_IS_APPROX(pow(m1,2), m1.square());
-  VERIFY_IS_APPROX(m1.pow(3), m1.cube());
-  VERIFY_IS_APPROX(pow(m1,3), m1.cube());
-  VERIFY_IS_APPROX((-m1).pow(3), -m1.cube());
-  VERIFY_IS_APPROX(pow(2*m1,3), 8*m1.cube());
-
-  ArrayType exponents = ArrayType::Constant(rows, cols, RealScalar(2));
-  VERIFY_IS_APPROX(Eigen::pow(m1,exponents), m1.square());
-  VERIFY_IS_APPROX(m1.pow(exponents), m1.square());
-  VERIFY_IS_APPROX(Eigen::pow(2*m1,exponents), 4*m1.square());
-  VERIFY_IS_APPROX((2*m1).pow(exponents), 4*m1.square());
-  VERIFY_IS_APPROX(Eigen::pow(m1,2*exponents), m1.square().square());
-  VERIFY_IS_APPROX(m1.pow(2*exponents), m1.square().square());
-  VERIFY_IS_APPROX(pow(m1(0,0), exponents), ArrayType::Constant(rows,cols,m1(0,0)*m1(0,0)));
-
   VERIFY_IS_APPROX(m3.pow(RealScalar(0.5)), m3.sqrt());
   VERIFY_IS_APPROX(pow(m3,RealScalar(0.5)), m3.sqrt());
 
@@ -311,88 +308,6 @@ template<typename ArrayType> void array_real(const ArrayType& m)
   s1 += Scalar(tiny);
   m1 += ArrayType::Constant(rows,cols,Scalar(tiny));
   VERIFY_IS_APPROX(s1/m1, s1 * m1.inverse());
-
-
-
-#if EIGEN_HAS_C99_MATH
-  // check special functions (comparing against numpy implementation)
-  if (!NumTraits<Scalar>::IsComplex)
-  {
-
-    {
-      // Test various propreties of igamma & igammac.  These are normalized
-      // gamma integrals where
-      //   igammac(a, x) = Gamma(a, x) / Gamma(a)
-      //   igamma(a, x) = gamma(a, x) / Gamma(a)
-      // where Gamma and gamma are considered the standard unnormalized
-      // upper and lower incomplete gamma functions, respectively.
-      ArrayType a = m1.abs() + 2;
-      ArrayType x = m2.abs() + 2;
-      ArrayType zero = ArrayType::Zero(rows, cols);
-      ArrayType one = ArrayType::Constant(rows, cols, Scalar(1.0));
-      ArrayType a_m1 = a - one;
-      ArrayType Gamma_a_x = Eigen::igammac(a, x) * a.lgamma().exp();
-      ArrayType Gamma_a_m1_x = Eigen::igammac(a_m1, x) * a_m1.lgamma().exp();
-      ArrayType gamma_a_x = Eigen::igamma(a, x) * a.lgamma().exp();
-      ArrayType gamma_a_m1_x = Eigen::igamma(a_m1, x) * a_m1.lgamma().exp();
-
-      // Gamma(a, 0) == Gamma(a)
-      VERIFY_IS_APPROX(Eigen::igammac(a, zero), one);
-
-      // Gamma(a, x) + gamma(a, x) == Gamma(a)
-      VERIFY_IS_APPROX(Gamma_a_x + gamma_a_x, a.lgamma().exp());
-
-      // Gamma(a, x) == (a - 1) * Gamma(a-1, x) + x^(a-1) * exp(-x)
-      VERIFY_IS_APPROX(Gamma_a_x, (a - 1) * Gamma_a_m1_x + x.pow(a-1) * (-x).exp());
-
-      // gamma(a, x) == (a - 1) * gamma(a-1, x) - x^(a-1) * exp(-x)
-      VERIFY_IS_APPROX(gamma_a_x, (a - 1) * gamma_a_m1_x - x.pow(a-1) * (-x).exp());
-    }
-
-    // Check exact values of igamma and igammac against a third party calculation.
-    Scalar a_s[] = {Scalar(0), Scalar(1), Scalar(1.5), Scalar(4), Scalar(0.0001), Scalar(1000.5)};
-    Scalar x_s[] = {Scalar(0), Scalar(1), Scalar(1.5), Scalar(4), Scalar(0.0001), Scalar(1000.5)};
-
-    // location i*6+j corresponds to a_s[i], x_s[j].
-    Scalar nan = std::numeric_limits<Scalar>::quiet_NaN();
-    Scalar igamma_s[][6] = {{0.0, nan, nan, nan, nan, nan},
-                            {0.0, 0.6321205588285578, 0.7768698398515702,
-                             0.9816843611112658, 9.999500016666262e-05, 1.0},
-                            {0.0, 0.4275932955291202, 0.608374823728911,
-                             0.9539882943107686, 7.522076445089201e-07, 1.0},
-                            {0.0, 0.01898815687615381, 0.06564245437845008,
-                             0.5665298796332909, 4.166333347221828e-18, 1.0},
-                            {0.0, 0.9999780593618628, 0.9999899967080838,
-                             0.9999996219837988, 0.9991370418689945, 1.0},
-                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.5042041932513908}};
-    Scalar igammac_s[][6] = {{nan, nan, nan, nan, nan, nan},
-                             {1.0, 0.36787944117144233, 0.22313016014842982,
-                              0.018315638888734182, 0.9999000049998333, 0.0},
-                             {1.0, 0.5724067044708798, 0.3916251762710878,
-                              0.04601170568923136, 0.9999992477923555, 0.0},
-                             {1.0, 0.9810118431238462, 0.9343575456215499,
-                              0.4334701203667089, 1.0, 0.0},
-                             {1.0, 2.1940638138146658e-05, 1.0003291916285e-05,
-                              3.7801620118431334e-07, 0.0008629581310054535,
-                              0.0},
-                             {1.0, 1.0, 1.0, 1.0, 1.0, 0.49579580674813944}};
-    for (int i = 0; i < 6; ++i) {
-      for (int j = 0; j < 6; ++j) {
-        if ((std::isnan)(igamma_s[i][j])) {
-          VERIFY((std::isnan)(numext::igamma(a_s[i], x_s[j])));
-        } else {
-          VERIFY_IS_APPROX(numext::igamma(a_s[i], x_s[j]), igamma_s[i][j]);
-        }
-
-        if ((std::isnan)(igammac_s[i][j])) {
-          VERIFY((std::isnan)(numext::igammac(a_s[i], x_s[j])));
-        } else {
-          VERIFY_IS_APPROX(numext::igammac(a_s[i], x_s[j]), igammac_s[i][j]);
-        }
-      }
-    }
-  }
-#endif  // EIGEN_HAS_C99_MATH
 
   // check inplace transpose
   m3 = m1;
@@ -536,80 +451,8 @@ template<typename ArrayType> void min_max(const ArrayType& m)
 
 }
 
-template<typename X, typename Y>
-void verify_component_wise(const X& x, const Y& y)
-{
-  for(Index i=0; i<x.size(); ++i)
-  {
-    if((numext::isfinite)(y(i)))
-      VERIFY_IS_APPROX( x(i), y(i) );
-    else if((numext::isnan)(y(i)))
-      VERIFY((numext::isnan)(x(i)));
-    else
-      VERIFY_IS_EQUAL( x(i), y(i) );
-  }
-}
-
-// check special functions (comparing against numpy implementation)
-template<typename ArrayType> void array_special_functions()
-{
-  using std::abs;
-  using std::sqrt;
-  typedef typename ArrayType::Scalar Scalar;
-  typedef typename NumTraits<Scalar>::Real RealScalar;
-
-  Scalar plusinf = std::numeric_limits<Scalar>::infinity();
-  Scalar nan = std::numeric_limits<Scalar>::quiet_NaN();
-
-  // Check the zeta function against scipy.special.zeta
-  {
-    ArrayType x(7), q(7), res(7), ref(7);
-    x << 1.5,   4, 10.5, 10000.5,    3, 1,        0.9;
-    q << 2,   1.5,    3,  1.0001, -2.5, 1.2345, 1.2345;
-    ref << 1.61237534869, 0.234848505667, 1.03086757337e-5, 0.367879440865, 0.054102025820864097, plusinf, nan;
-    CALL_SUBTEST( verify_component_wise(ref, ref); );
-    CALL_SUBTEST( res = x.zeta(q); verify_component_wise(res, ref); );
-    CALL_SUBTEST( res = zeta(x,q); verify_component_wise(res, ref); );
-  }
-
-  // digamma
-  {
-    ArrayType x(7), res(7), ref(7);
-    x << 1, 1.5, 4, -10.5, 10000.5, 0, -1;
-    ref << -0.5772156649015329, 0.03648997397857645, 1.2561176684318, 2.398239129535781, 9.210340372392849, plusinf, plusinf;
-    CALL_SUBTEST( verify_component_wise(ref, ref); );
-
-    CALL_SUBTEST( res = x.digamma(); verify_component_wise(res, ref); );
-    CALL_SUBTEST( res = digamma(x);  verify_component_wise(res, ref); );
-  }
-
-
-#if EIGEN_HAS_C99_MATH
-  {
-    ArrayType n(11), x(11), res(11), ref(11);
-    n << 1, 1,    1, 1.5,   17,   31,   28,    8, 42, 147, 170;
-    x << 2, 3, 25.5, 1.5,  4.7, 11.8, 17.7, 30.2, 15.8, 54.1, 64;
-    ref << 0.644934066848, 0.394934066848, 0.0399946696496, nan, 293.334565435, 0.445487887616, -2.47810300902e-07, -8.29668781082e-09, -0.434562276666, 0.567742190178, -0.0108615497927;
-    CALL_SUBTEST( verify_component_wise(ref, ref); );
-
-    if(sizeof(RealScalar)>=64) {
-//       CALL_SUBTEST( res = x.polygamma(n); verify_component_wise(res, ref); );
-      CALL_SUBTEST( res = polygamma(n,x);  verify_component_wise(res, ref); );
-    }
-    else {
-//       CALL_SUBTEST( res = x.polygamma(n); verify_component_wise(res.head(8), ref.head(8)); );
-      CALL_SUBTEST( res = polygamma(n,x); verify_component_wise(res.head(8), ref.head(8)); );
-    }
-  }
-#endif
-}
-
 void test_array()
 {
-#ifndef EIGEN_HAS_C99_MATH
-  std::cerr << "WARNING: testing of special math functions disabled" << std::endl;
-#endif
-
   for(int i = 0; i < g_repeat; i++) {
     CALL_SUBTEST_1( array(Array<float, 1, 1>()) );
     CALL_SUBTEST_2( array(Array22f()) );
@@ -645,11 +488,8 @@ void test_array()
   VERIFY((internal::is_same< internal::global_math_functions_filtering_base<int>::type, int >::value));
   VERIFY((internal::is_same< internal::global_math_functions_filtering_base<float>::type, float >::value));
   VERIFY((internal::is_same< internal::global_math_functions_filtering_base<Array2i>::type, ArrayBase<Array2i> >::value));
-  typedef CwiseUnaryOp<internal::scalar_multiple_op<double>, ArrayXd > Xpr;
+  typedef CwiseUnaryOp<internal::scalar_abs_op<double>, ArrayXd > Xpr;
   VERIFY((internal::is_same< internal::global_math_functions_filtering_base<Xpr>::type,
                            ArrayBase<Xpr>
                          >::value));
-
-  CALL_SUBTEST_7(array_special_functions<ArrayXf>());
-  CALL_SUBTEST_7(array_special_functions<ArrayXd>());
 }

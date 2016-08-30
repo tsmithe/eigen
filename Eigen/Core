@@ -252,6 +252,11 @@
 // for min/max:
 #include <algorithm>
 
+// for std::is_nothrow_move_assignable
+#ifdef EIGEN_INCLUDE_TYPE_TRAITS
+#include <type_traits>
+#endif
+
 // for outputting debug info
 #ifdef EIGEN_DEBUG_ASSIGN
 #include <iostream>
@@ -323,8 +328,8 @@ using std::ptrdiff_t;
 
 #include "src/Core/NumTraits.h"
 #include "src/Core/MathFunctions.h"
-#include "src/Core/SpecialFunctions.h"
 #include "src/Core/GenericPacketMath.h"
+#include "src/Core/MathFunctionsImpl.h"
 
 #if defined EIGEN_VECTORIZE_AVX
   // Use AVX for floats and doubles, SSE for integers
@@ -366,6 +371,7 @@ using std::ptrdiff_t;
 
 #include "src/Core/arch/Default/Settings.h"
 
+#include "src/Core/functors/TernaryFunctors.h"
 #include "src/Core/functors/BinaryFunctors.h"
 #include "src/Core/functors/UnaryFunctors.h"
 #include "src/Core/functors/NullaryFunctors.h"
@@ -398,6 +404,7 @@ using std::ptrdiff_t;
 #include "src/Core/PlainObjectBase.h"
 #include "src/Core/Matrix.h"
 #include "src/Core/Array.h"
+#include "src/Core/CwiseTernaryOp.h"
 #include "src/Core/CwiseBinaryOp.h"
 #include "src/Core/CwiseUnaryOp.h"
 #include "src/Core/CwiseNullaryOp.h"
