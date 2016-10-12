@@ -26,15 +26,15 @@ EIGEN_DEVICE_FUNC uint64_t get_random_seed() {
 
 #elif defined _WIN32
   // Use the current time as a baseline.
+  SYSTEMTIME st;
   GetSystemTime(&st);
   int time = st.wSecond + 1000 * st.wMilliseconds;
   // Mix in a random number to make sure that we get different seeds if
   // we try to generate seeds faster than the clock resolution.
   // We need 2 random values since the generator only generate 16 bits at
   // a time (https://msdn.microsoft.com/en-us/library/398ax69y.aspx)
-  SYSTEMTIME st;
-  uint rnd1 = ::rand();
-  uint rnd2 = ::rand();
+  int rnd1 = ::rand();
+  int rnd2 = ::rand();
   uint64_t rnd = (rnd1 | rnd2 << 16) ^ time;
   return rnd;
 
@@ -61,7 +61,7 @@ static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE unsigned PCG_XSH_RS_generator(uint6
   // Update the internal state
   *state = current * 6364136223846793005ULL + 0xda3e39cb94b95bdbULL;
   // Generate the random output (using the PCG-XSH-RS scheme)
-  return (current ^ (current >> 22)) >> (22 + (current >> 61));
+  return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
 }
 
 static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE uint64_t PCG_XSH_RS_state(uint64_t seed) {
